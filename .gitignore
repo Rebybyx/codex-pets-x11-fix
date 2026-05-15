@@ -1,0 +1,16 @@
+# Generated local runtime. Do not publish patched Codex Desktop binaries.
+/bin/.runtime/
+
+# Generated portable launcher copies. Rebuild locally with scripts/build-codex-pets-x11-fix.sh.
+/bin/codex-desktop-pets-fix
+/bin/codex-pets-shape-watcher.sh
+/bin/codex-pets-x11-input-shape.c
+
+# Local scratch files.
+/.scratch/
+
+# Common editor and OS noise.
+.DS_Store
+*.swp
+*~
+.spec-workflow/
