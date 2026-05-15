@@ -87,8 +87,6 @@ CODEX_AVATAR_INPUT_PADDING=0 ./bin/codex-desktop-pets-fix
 
 The build creates generated runtime files under `bin/`, including a patched `app.asar` copied from your local Codex Desktop installation.
 
-Do not publish generated Codex Desktop runtime files to a public repository. This repository should only publish the scripts and source code needed to build the local workaround.
-
 ## How It Works
 
 Codex Desktop stores the pet overlay bounds in its global state file. The watcher reads the current pet and tray rectangles, finds the matching X11 overlay window, and applies an X11 `ShapeInput` region.
@@ -109,4 +107,4 @@ See [LICENSE](./LICENSE).
 
 ## Disclaimer
 
-This project is not affiliated with, endorsed by, or sponsored by OpenAI. "Codex" and related product names belong to their respective owners.
+This project is not affiliated with, endorsed by, or sponsored by OpenAI. For personal research use only. Do not use it for illegal purposes.
