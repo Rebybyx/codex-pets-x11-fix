@@ -56,34 +56,71 @@ MAIN_JS="$(find "${EXTRACTED}/.vite/build" -maxdepth 1 -type f -name 'main-*.js'
 node - "${MAIN_JS}" <<'NODE'
 const fs = require("node:fs");
 const mainPath = process.argv[2];
-const source = fs.readFileSync(mainPath, "utf8");
+let source = fs.readFileSync(mainPath, "utf8");
 const passthroughOriginal = "let t=!this.pointerInteractive;if(this.mousePassthroughEnabled!==t){if(this.mousePassthroughEnabled=t,t){e.setIgnoreMouseEvents(!0,{forward:!0});return}e.setIgnoreMouseEvents(!1),this.refreshCursorAtCurrentMousePosition(e)}}";
 const passthroughPatched = "let t=process.env.CODEX_DISABLE_AVATAR_MOUSE_PASSTHROUGH===`1`?!1:!this.pointerInteractive;if(this.mousePassthroughEnabled!==t){if(this.mousePassthroughEnabled=t,t){e.setIgnoreMouseEvents(!0,{forward:!0});return}e.setIgnoreMouseEvents(!1),this.refreshCursorAtCurrentMousePosition(e)}}";
-const elementSizeOriginal = "setElementSize(e,{mascot:t,tray:n}){let r=this.window;r==null||r.isDestroyed()||r.webContents.id!==e||(this.cancelMomentum(),this.anchor={...this.anchor,width:t.width,height:t.height},this.mascotSize=t,this.traySize=n,this.applyLayout(r))}";
-const elementSizePatched = "setElementSize(e,{isTrayVisible:i,mascot:t,tray:n}){let r=this.window;r==null||r.isDestroyed()||r.webContents.id!==e||(this.cancelMomentum(),this.isTrayVisible=i===!0,this.anchor={...this.anchor,width:t.width,height:t.height},this.mascotSize=t,this.traySize=n,this.applyLayout(r),this.persistWindowBounds(r))}";
 const persistOriginal = "e.isDestroyed()||this.globalState.set(Ee,{...e.getContentBounds(),anchor:this.anchor,mascot:this.layout?.mascot,placement:this.placement,tray:this.layout?.tray})}";
 const persistPatched = "e.isDestroyed()||this.globalState.set(Ee,{...e.getContentBounds(),anchor:this.anchor,mascot:this.layout?.mascot,placement:this.placement,tray:this.layout?.tray,isTrayVisible:this.isTrayVisible===!0})}";
+const avatarBoundsSchemaOriginal = "tray:Me.nullable().optional()})";
+const avatarBoundsSchemaPatched = "tray:Me.nullable().optional(),isTrayVisible:e.gr.boolean().optional()})";
 
-if (!source.includes(passthroughOriginal)) {
-  throw new Error("Target avatar overlay mouse passthrough code was not found.");
+/*
+ * 2026-05-16, 苍朮：执行一次精确替换并给出可定位错误。
+ * 用途：Codex Desktop 更新后，构建脚本能明确指出是哪一个补丁锚点漂移。
+ * 参数说明：name 为锚点名称，original 为旧片段，patched 为新片段。
+ * 返回值：无；直接更新外层 source。
+ */
+function replaceOnce(name, original, patched) {
+  if (!source.includes(original)) {
+    throw new Error(`Target avatar overlay ${name} code was not found.`);
+  }
+  source = source.replace(original, patched);
 }
 
-if (!source.includes(elementSizeOriginal)) {
-  throw new Error("Target avatar overlay element-size code was not found.");
+/*
+ * 2026-05-16, 苍朮：给新版 setElementSize 注入托盘可见状态持久化。
+ * 用途：保留官方新增的 mascot resize 防抖逻辑，只追加 isTrayVisible 和 persistWindowBounds。
+ * 参数说明：无，读写外层 source。
+ * 返回值：无；找不到预期锚点时抛出错误。
+ */
+function patchElementSize() {
+  const signatureOriginal = "setElementSize(e,{mascot:t,tray:n})";
+  const signaturePatched = "setElementSize(e,{isTrayVisible:i,mascot:t,tray:n})";
+  if (!source.includes(signatureOriginal)) {
+    throw new Error("Target avatar overlay element-size signature was not found.");
+  }
+  source = source.replace(signatureOriginal, signaturePatched);
+
+  const methodStart = source.indexOf(signaturePatched);
+  const methodEnd = source.indexOf("async ensureWindow()", methodStart);
+  if (methodStart < 0 || methodEnd < 0) {
+    throw new Error("Target avatar overlay element-size method boundary was not found.");
+  }
+
+  let methodSource = source.slice(methodStart, methodEnd);
+  const guardOriginal = "if(!(r==null||r.isDestroyed()||r.webContents.id!==e)){";
+  const guardPatched = `${guardOriginal}this.isTrayVisible=i===!0;`;
+  if (!methodSource.includes(guardOriginal)) {
+    throw new Error("Target avatar overlay element-size window guard was not found.");
+  }
+  methodSource = methodSource.replace(guardOriginal, guardPatched);
+
+  const applyLayoutOriginal = "this.mascotSize=t,this.traySize=n,this.applyLayout(r)";
+  const applyLayoutPatched = "this.mascotSize=t,this.traySize=n,this.applyLayout(r),this.persistWindowBounds(r)";
+  if (!methodSource.includes(applyLayoutOriginal)) {
+    throw new Error("Target avatar overlay element-size applyLayout code was not found.");
+  }
+  methodSource = methodSource.replace(applyLayoutOriginal, applyLayoutPatched);
+
+  source = source.slice(0, methodStart) + methodSource + source.slice(methodEnd);
 }
 
-if (!source.includes(persistOriginal)) {
-  throw new Error("Target avatar overlay persist code was not found.");
-}
+replaceOnce("mouse passthrough", passthroughOriginal, passthroughPatched);
+patchElementSize();
+replaceOnce("persist", persistOriginal, persistPatched);
+replaceOnce("bounds schema", avatarBoundsSchemaOriginal, avatarBoundsSchemaPatched);
 
-fs.writeFileSync(
-  mainPath,
-  source
-    .replace(passthroughOriginal, passthroughPatched)
-    .replace(elementSizeOriginal, elementSizePatched)
-    .replace(persistOriginal, persistPatched),
-  "utf8",
-);
+fs.writeFileSync(mainPath, source, "utf8");
 NODE
 
 asar pack "${EXTRACTED}" "${PATCHED_ASAR}"
